@@ -38,8 +38,8 @@
 struct dummy_sched_data
 {
 	struct starpu_task_list sched_list;
-     	starpu_pthread_mutex_t policy_mutex;
-		 struct starpu_task_list *worker_sched_list;
+    starpu_pthread_mutex_t policy_mutex;
+	struct starpu_task_list *worker_sched_list;
 };
 
 static void init_dummy_sched(unsigned sched_ctx_id)
@@ -105,7 +105,7 @@ static int push_task_dummy(struct starpu_task *task)
 
 	/* lock all workers when pushing tasks on a list where all
 	   of them would pop for tasks */
-        STARPU_PTHREAD_MUTEX_LOCK(&data->policy_mutex);
+    STARPU_PTHREAD_MUTEX_LOCK(&data->policy_mutex);
 
 	starpu_task_list_push_back(&data->sched_list, task);
 	push_task_on_device(sched_ctx_id);   
@@ -133,6 +133,60 @@ static int push_task_dummy(struct starpu_task *task)
     //     }
 
 	return 0;
+}
+static double get_task_heter_ration(unsigned sched_ctx_id)
+{
+	struct starpu_worker_collection *workers = starpu_sched_ctx_get_worker_collection(sched_ctx_id);
+
+	struct starpu_sched_ctx_iterator it;
+	struct starpu_sched_ctx_iterator it1;
+	double max_execution_time = 0;
+	double max_heter_tatio = 0;
+
+
+	workers->init_iterator(workers, &it);
+	while(workers->has_next_master(workers, &it))
+	{
+		worker = workers->get_next_master(workers, &it);
+		unsigned memory_node = starpu_worker_get_memory_node(worker);
+		struct starpu_perfmodel_arch* perf_arch = starpu_worker_get_perf_archtype(worker, sched_ctx_id);
+		if (!starpu_worker_can_execute_task_impl(worker, task, &impl_mask))
+			continue;
+
+		for (nimpl = 0; nimpl < STARPU_MAXIMPLEMENTATIONS; nimpl++)
+		{
+			if (!(impl_mask & (1U << nimpl)))
+			{
+				/* no one on that queue may execute this task */
+				continue;
+			}
+			double local_length = starpu_task_expected_length(task, perf_arch, nimpl);
+			if (local_length>max_execution_time) max_execution_time = local_length;
+		}
+	}
+
+	workers->init_iterator(workers, &it1);
+	while(workers->has_next_master(workers, &it1))
+	{
+		worker = workers->get_next_master(workers, &it1);
+		unsigned memory_node = starpu_worker_get_memory_node(worker);
+		struct starpu_perfmodel_arch* perf_arch = starpu_worker_get_perf_archtype(worker, sched_ctx_id);
+		if (!starpu_worker_can_execute_task_impl(worker, task, &impl_mask))
+			continue;
+
+		for (nimpl = 0; nimpl < STARPU_MAXIMPLEMENTATIONS; nimpl++)
+		{
+			if (!(impl_mask & (1U << nimpl)))
+			{
+				/* no one on that queue may execute this task */
+				continue;
+			}
+			double local_length = starpu_task_expected_length(task, perf_arch, nimpl);
+			double heter_ratio = max_execution_time/local_length;
+			if(heter_ratio>max_heter_tatio)max_heter_tatio = heter_ratio;
+		}
+	}
+	return max_heter_tatio;
 }
 
 /* The mutex associated to the calling worker is already taken by StarPU */
