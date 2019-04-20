@@ -35,6 +35,8 @@
 #endif
 #define FPRINTF(ofile, fmt, ...) do { if (!getenv("STARPU_SSILENT")) {fprintf(ofile, fmt, ## __VA_ARGS__); }} while(0)
 
+static double get_task_heter_ratio(unsigned sched_ctx_id,struct starpu_task* task);
+
 struct dummy_sched_data
 {
 	struct starpu_task_list sched_list;
@@ -106,7 +108,8 @@ static int push_task_dummy(struct starpu_task *task)
 	/* lock all workers when pushing tasks on a list where all
 	   of them would pop for tasks */
     STARPU_PTHREAD_MUTEX_LOCK(&data->policy_mutex);
-
+    double max_heter_tatio = get_task_heter_ratio(sched_ctx_id, task);
+    printf("%lf\n", max_heter_tatio);
 	starpu_task_list_push_back(&data->sched_list, task);
 	push_task_on_device(sched_ctx_id);   
 	starpu_push_task_end(task);
@@ -134,7 +137,7 @@ static int push_task_dummy(struct starpu_task *task)
 
 	return 0;
 }
-static double get_task_heter_ration(unsigned sched_ctx_id)
+static double get_task_heter_ratio(unsigned sched_ctx_id,struct starpu_task* task)
 {
 	struct starpu_worker_collection *workers = starpu_sched_ctx_get_worker_collection(sched_ctx_id);
 
@@ -142,6 +145,10 @@ static double get_task_heter_ration(unsigned sched_ctx_id)
 	struct starpu_sched_ctx_iterator it1;
 	double max_execution_time = 0;
 	double max_heter_tatio = 0;
+	unsigned worker;
+	unsigned impl_mask;
+	unsigned nimpl;
+
 
 
 	workers->init_iterator(workers, &it);
@@ -161,9 +168,11 @@ static double get_task_heter_ration(unsigned sched_ctx_id)
 				continue;
 			}
 			double local_length = starpu_task_expected_length(task, perf_arch, nimpl);
+			printf("expected length is %lf\n", local_length);
 			if (local_length>max_execution_time) max_execution_time = local_length;
 		}
 	}
+	printf("the max_execution_time is %lf\n", max_execution_time);
 
 	workers->init_iterator(workers, &it1);
 	while(workers->has_next_master(workers, &it1))
@@ -224,6 +233,10 @@ static struct starpu_sched_policy dummy_sched_policy =
 
 void dummy_func(void *descr[] STARPU_ATTRIBUTE_UNUSED, void *arg STARPU_ATTRIBUTE_UNUSED)
 {
+	int k = 0;
+	for(int i = 0;i<10000000;i++){
+		k = i+1;
+	}
 }
 
 static struct starpu_codelet dummy_codelet =
