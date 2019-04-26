@@ -34,8 +34,11 @@
 #define NTASKS	32000
 #endif
 #define FPRINTF(ofile, fmt, ...) do { if (!getenv("STARPU_SSILENT")) {fprintf(ofile, fmt, ## __VA_ARGS__); }} while(0)
+#define thr 	10//predeﬁned threshold 
 
 static double get_task_heter_ratio(unsigned sched_ctx_id,struct starpu_task* task);
+
+int all_device_len = 0;// the total number of assigned tasks in all device queues
 
 struct dummy_sched_data
 {
@@ -108,10 +111,38 @@ static int push_task_dummy(struct starpu_task *task)
 	/* lock all workers when pushing tasks on a list where all
 	   of them would pop for tasks */
     STARPU_PTHREAD_MUTEX_LOCK(&data->policy_mutex);
-    double max_heter_tatio = get_task_heter_ratio(sched_ctx_id, task);
-    printf("%lf\n", max_heter_tatio);
-	starpu_task_list_push_back(&data->sched_list, task);
-	push_task_on_device(sched_ctx_id);   
+    double max_heter_ratio = get_task_heter_ratio(sched_ctx_id, task);
+    // printf("%lf\n", max_heter_ratio);
+	// starpu_task_list_push_back(&data->sched_list, task);
+	if(starpu_task_list_empty(&data->sched_list))
+	{
+		starpu_task_list_push_back(&data->sched_list, task);
+	}
+	else
+	{
+		struct starpu_task* current = starpu_task_list_begin(&data->sched_list);
+		if(max_heter_ratio>get_task_heter_ratio(sched_ctx_id, current))
+		{
+			starpu_task_list_push_front(&data->sched_list, task);
+		}
+		else
+		{
+			current = current->next;
+			while(current!= NULL)
+			{
+				if(max_heter_ratio>get_task_heter_ratio(sched_ctx_id, current))
+				{
+					current->prev->next = task;
+					task->next = current;
+					task->prev = current->prev;
+					current->prev = task;
+				}
+			}
+			
+		}
+		
+	}
+	if(all_device_len<thr) push_task_on_device(sched_ctx_id);   
 	starpu_push_task_end(task);
 	STARPU_PTHREAD_MUTEX_UNLOCK(&data->policy_mutex);
 
@@ -167,7 +198,7 @@ static double get_task_heter_ratio(unsigned sched_ctx_id,struct starpu_task* tas
 				/* no one on that queue may execute this task */
 				continue;
 			}
-			double local_length = starpu_task_expected_length(task, perf_arch, nimpl);
+			double local_length = 1+starpu_task_expected_length(task, perf_arch, nimpl);
 			printf("expected length is %lf\n", local_length);
 			if (local_length>max_execution_time) max_execution_time = local_length;
 		}
@@ -190,7 +221,7 @@ static double get_task_heter_ratio(unsigned sched_ctx_id,struct starpu_task* tas
 				/* no one on that queue may execute this task */
 				continue;
 			}
-			double local_length = starpu_task_expected_length(task, perf_arch, nimpl);
+			double local_length = 1+ starpu_task_expected_length(task, perf_arch, nimpl);
 			double heter_ratio = max_execution_time/local_length;
 			if(heter_ratio>max_heter_tatio)max_heter_tatio = heter_ratio;
 		}
@@ -234,8 +265,8 @@ static struct starpu_sched_policy dummy_sched_policy =
 void dummy_func(void *descr[] STARPU_ATTRIBUTE_UNUSED, void *arg STARPU_ATTRIBUTE_UNUSED)
 {
 	int k = 0;
-	for(int i = 0;i<10000000;i++){
-		k = i+1;
+	for(int i = 0;i<1000000000;i++){
+		k = i*20;
 	}
 }
 
