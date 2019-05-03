@@ -1,4 +1,4 @@
-/* StarPU --- Runtime system for heterogeneous multicore architectures.
+﻿/* StarPU --- Runtime system for heterogeneous multicore architectures.
  *
  * Copyright (C) 2012-2013                                Inria
  * Copyright (C) 2010-2013,2015-2017                      CNRS
@@ -1446,7 +1446,7 @@ int main(int argc, char **argv)
 #endif
 
 	starpu_conf_init(&conf);
-	//conf.sched_policy = &_starpu_sched_dm_policy,
+	conf.sched_policy = &_starpu_sched_dm_policy,
 	ret = starpu_init(&conf);
 	if (ret == -ENODEV)
 		return 77;
