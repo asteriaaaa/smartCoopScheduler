@@ -1,0 +1,15 @@
+cmake_minimum_required (VERSION 3.2)
+project (dummy)
+
+
+find_package(PkgConfig)
+pkg_check_modules(STARPU REQUIRED starpu-1.2)
+if (STARPU_FOUND)
+    include_directories (${STARPU_INCLUDE_DIRS} /home/undergrats/test_starpu/starpu-1.2.7/src)
+            link_directories    (${STARPU_STATIC_LIBRARY_DIRS})
+                link_libraries      (${STARPU_STATIC_LIBRARIES})
+            else (STARPU_FOUND)
+                    message(FATAL_ERROR "StarPU not found")
+                endif()
+INCLUDE(/usr/share/cmake-3.5/Modules/FindCUDA.cmake)
+cuda_add_executable(dummy pi_bak.c pi_kernel.cu  SobolQRNG/sobol_gpu.cu  SobolQRNG/sobol_gold.c SobolQRNG/sobol_primitives.c )
