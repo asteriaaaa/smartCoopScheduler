@@ -25,6 +25,7 @@
 #include <starpu.h>
 #include <starpu_scheduler.h>
 #include <stdlib.h>
+#include <starpu_task.h>
 
 #ifdef STARPU_QUICK_CHECK
 #define NTASKS 320
@@ -44,6 +45,7 @@
 #define thr 10 //predeﬁned threshold
 
 static double get_task_heter_ratio(unsigned sched_ctx_id, struct starpu_task *task);
+static double get_rank(unsigned sched_ctx_id, struct starpu_task *task);
 
 int all_device_len = 0; // the total number of assigned tasks in all device queues
 
@@ -164,7 +166,8 @@ static int push_task_dummy(struct starpu_task *task)
 	starpu_task_list_sort_on_heter_ratio(&data->sched_list, sched_ctx_id);
 	/* lock all workers when pushing tasks on a list where all
 	   of them would pop for tasks */
-	double rank = get_rank(sched_ctx_id, task);
+	double rank;
+	rank = get_rank(sched_ctx_id, task);
 	printf("the rank is %d\n", rank);
 	STARPU_PTHREAD_MUTEX_LOCK(&data->policy_mutex);
 	double max_heter_ratio = get_task_heter_ratio(sched_ctx_id, task);
@@ -287,15 +290,17 @@ static double avg_execution_time(unsigned sched_ctx_id, struct starpu_task *task
 {
 	unsigned m = starpu_worker_get_count();
 	double ances_completion_time = 0;
+	unsigned impl_mask;
+	unsigned nimpl;
 
-	unsigned workers = 0;
+	struct starpu_worker_collection *workers = starpu_sched_ctx_get_worker_collection(sched_ctx_id);
 	struct starpu_sched_ctx_iterator it;
 
 	//compute the first part in rank
 	workers->init_iterator(workers, &it);
 	while (workers->has_next_master(workers, &it))
 	{
-		worker = workers->get_next_master(workers, &it);
+		unsigned worker = workers->get_next_master(workers, &it);
 		// unsigned memory_node = starpu_worker_get_memory_node(worker);
 		struct starpu_perfmodel_arch *perf_arch = starpu_worker_get_perf_archtype(worker, sched_ctx_id);
 		if (!starpu_worker_can_execute_task_impl(worker, task, &impl_mask))
@@ -329,9 +334,9 @@ static double gengral_data_transfer_time(struct starpu_task *ances, struct starp
 	{
 		starpu_data_handle_t handle = STARPU_TASK_GET_HANDLE(sucess, buffer);
 		size_t size = _starpu_data_get_size(handle);
-		for (int i = 0, i < m, i++)
+		for (int i = 0; i < m; i++)
 		{
-			for (int j = 0, j < m, j++)
+			for (int j = 0; j < m; j++)
 			{
 				src_node = starpu_worker_get_memory_node(i);
 				des_node = starpu_worker_get_memory_node(j);
@@ -341,7 +346,7 @@ static double gengral_data_transfer_time(struct starpu_task *ances, struct starp
 			}
 		}
 	}
-	return penalty / (m * m)
+	return penalty / (m * m);
 }
 
 static double get_rank(unsigned sched_ctx_id, struct starpu_task *task)
@@ -351,13 +356,15 @@ static double get_rank(unsigned sched_ctx_id, struct starpu_task *task)
 	int succe_size = statpu_task_get_task_succs(task, 0, NULL);
 	struct starpu_task *succe[succe_size];
 	starpu_task_get_task_succs(task, sizeof(succe) / sizeof(*succe), succe);
-	for (int i = 0, i < succe_size, i++)
+	for (int i = 0; i < succe_size; i++)
 	{
 		double succe_exe_time = avg_execution_time(sched_ctx_id, succe[i]);
 		double trans_time = gengral_data_transfer_time(task, succe[i]);
 		double trans_plus_exe = succe_exe_time + trans_time;
 		if (trans_plus_exe > max_trans_plus_exe)
+		{
 			max_trans_plus_exe = trans_plus_exe;
+		}
 	}
 	return ances_exe_time + max_trans_plus_exe;
 }
